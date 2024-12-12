@@ -1,0 +1,111 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Library Management API",
+      "version": "1.0.0",
+      "description": "API for managing a library system."
+    },
+    "servers": [
+      {
+        "url": "http://localhost:3000",
+        "description": "Local server"
+      }
+    ],
+    "paths": {
+      "/books": {
+        "post": {
+          "summary": "Add a new book to the library",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "title": { "type": "string" },
+                    "author": { "type": "string" }
+                  },
+                  "required": ["title", "author"]
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": { "description": "Book added successfully." },
+            "400": { "description": "Validation error." },
+            "500": { "description": "Internal server error." }
+          }
+        },
+        "get": {
+          "summary": "View all available books",
+          "responses": {
+            "200": {
+              "description": "List of available books.",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Book"
+                    }
+                  }
+                }
+              }
+            },
+            "500": { "description": "Internal server error." }
+          }
+        }
+      },
+      "/books/borrow/{id}": {
+        "patch": {
+          "summary": "Borrow a book",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": { "type": "string" }
+            }
+          ],
+          "responses": {
+            "200": { "description": "Book borrowed successfully." },
+            "400": { "description": "Book already borrowed." },
+            "404": { "description": "Book not found." },
+            "500": { "description": "Internal server error." }
+          }
+        }
+      },
+      "/books/return/{id}": {
+        "patch": {
+          "summary": "Return a borrowed book",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": { "type": "string" }
+            }
+          ],
+          "responses": {
+            "200": { "description": "Book returned successfully." },
+            "400": { "description": "Book not borrowed." },
+            "404": { "description": "Book not found." },
+            "500": { "description": "Internal server error." }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "Book": {
+          "type": "object",
+          "properties": {
+            "title": { "type": "string" },
+            "author": { "type": "string" },
+            "isBorrowed": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+  
