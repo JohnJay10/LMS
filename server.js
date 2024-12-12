@@ -18,21 +18,31 @@ app.use(morgan('combined'));
 app.use(helmet());
 app.use(cors());
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// Set PORT before using it
+const PORT = process.env.PORT || 3000;
 
+// API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 console.log(`API documentation available at http://localhost:${PORT}/api-docs`);
 
 // Connect to MongoDB
 const mongoURI = process.env.MONGO_URI;
-mongoose.connect(mongoURI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-  
-});
+
+mongoose.connect(mongoURI)
+  .then(() => console.log('Successfully connected to MongoDB'))
+  .catch((error) => console.error('MongoDB connection error:', error));
 
 const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 db.once('open', () => console.log('Successfully connected to MongoDB'));
+
+
+app.use(express.static('public'));
+
+// Example route for the home page (optional if index.html is sufficient)
+app.get('/', (req, res) => {
+  res.sendFile('index.html', { root: 'public' });
+});
 
 // Define the Book schema and model
 const bookSchema = new mongoose.Schema({
@@ -139,6 +149,21 @@ app.get('/books', async (req, res) => {
   }
 });
 
+/**
+ * @route GET /books/all
+ * @description View all books in the library (both borrowed and available)
+ * @access Public
+ */
+app.get('/books/all', async (req, res) => {
+  try {
+    const books = await Book.find().sort({ createdAt: -1 });
+    res.status(200).json({ message: 'All books retrieved successfully.', books });
+  } catch (error) {
+    console.error('Error retrieving all books:', error);
+    res.status(500).json({ message: 'Internal server error.', error: error.message });
+  }
+});
+
 // Error Handling Middleware
 app.use((req, res, next) => {
   res.status(404).json({ message: 'Endpoint not found.' });
@@ -153,6 +178,8 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 module.exports = app;

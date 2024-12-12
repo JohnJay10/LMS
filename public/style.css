@@ -1,0 +1,47 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+  }
+  
+  header {
+    background-color: #333;
+    color: white;
+    padding: 1rem;
+    text-align: center;
+  }
+  
+  main {
+    padding: 1rem;
+  }
+  
+  section {
+    margin: 1rem 0;
+  }
+  
+  ul {
+    list-style: none;
+    padding: 0; /* Ensures no padding around the list */
+    margin: 0; /* Removes default margin */
+  }
+  
+  li {
+    padding: 0.5rem;
+    background-color: #fff; /* White background for each list item */
+    margin: 0.5rem 0; /* Space between list items */
+    border: 1px solid #ddd; /* Adds a light border around each item */
+    border-radius: 4px; /* Rounds the corners */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Adds a subtle shadow */
+  }
+  
+  a {
+    text-decoration: none; /* Removes underline from links */
+    color: #007bff; /* Default link color */
+  }
+  
+  a:hover {
+    color: #0056b3; /* Darker shade on hover */
+    text-decoration: underline; /* Adds underline on hover */
+  }
+  
