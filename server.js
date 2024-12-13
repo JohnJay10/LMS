@@ -63,7 +63,7 @@ app.get('/', (req, res) => {
 // Serve static files (CSS, JS) from Swagger UI
 app.use('/swagger-ui', express.static(path.join(__dirname, 'node_modules', 'swagger-ui-dist')));
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use('/apidocs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 // Routes
 
 // Add a book
