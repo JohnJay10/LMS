@@ -1,182 +1,142 @@
-// Import required modules
+// Import necessary modules
 const express = require('express');
+const path = require('path'); // Add this to work with file paths
 const mongoose = require('mongoose');
-const morgan = require('morgan');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const cors = require('cors');
-const dotenv = require('dotenv');
+const { body, param, validationResult } = require('express-validator');
 const swaggerUi = require('swagger-ui-express');
-const swaggerDocument = require('./swagger.json');
+const swaggerDocument = require('./swagger.json'); // Adjust the path as needed
 
-// Load environment variables
-dotenv.config();
 
-// Initialize Express app
+require('dotenv').config();
+
+// Initialize the app and middleware
 const app = express();
 app.use(express.json());
-app.use(morgan('combined'));
-app.use(helmet());
-app.use(cors());
+app.use(helmet()); // Adds security headers
+app.use(cors()); // Enables Cross-Origin Resource Sharing
 
-// Set PORT before using it
-const PORT = process.env.PORT || 3000;
+// Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
 
-// API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-console.log(`API documentation available at http://localhost:${PORT}/api-docs`);
+// Rate limiter to prevent abuse
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100 // Limit each IP to 100 requests per windowMs
+});
+app.use(limiter);
 
-// Connect to MongoDB
 const mongoURI = process.env.MONGO_URI;
 
 mongoose.connect(mongoURI)
   .then(() => console.log('Successfully connected to MongoDB'))
   .catch((error) => console.error('MongoDB connection error:', error));
 
-const db = mongoose.connection;
-db.on('error', console.error.bind(console, 'MongoDB connection error:'));
-db.once('open', () => console.log('Successfully connected to MongoDB'));
-
-
-app.use(express.static('public'));
-
-// Example route for the home page (optional if index.html is sufficient)
-app.get('/', (req, res) => {
-  res.sendFile('index.html', { root: 'public' });
-});
-
-// Define the Book schema and model
+// Define a Book schema
 const bookSchema = new mongoose.Schema({
-  title: { type: String, required: true, trim: true },
-  author: { type: String, required: true, trim: true },
-  isBorrowed: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
+    title: { type: String, required: true },
+    author: { type: String, required: true },
+    isBorrowed: { type: Boolean, default: false }
+}, { timestamps: true });
 
-bookSchema.pre('save', function (next) {
-  this.updatedAt = Date.now();
-  next();
-});
-
+// Create a Book model
 const Book = mongoose.model('Book', bookSchema);
 
+// Middleware for validating request inputs
+const validateInputs = (validations) => async (req, res, next) => {
+    await Promise.all(validations.map(validation => validation.run(req)));
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+    next();
+};
+
+
+// Serve the welcome page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 // Routes
 
-/**
- * @route POST /books
- * @description Add a new book to the library
- * @access Public
- */
-app.post('/books', async (req, res) => {
-  try {
-    const { title, author } = req.body;
-    if (!title || !author) {
-      return res.status(400).json({ message: 'Title and author are required.' });
+// Add a book
+app.post('/books', 
+    validateInputs([
+        body('title').isString().notEmpty().withMessage('Title is required'),
+        body('author').isString().notEmpty().withMessage('Author is required')
+    ]),
+    async (req, res) => {
+        try {
+            const { title, author } = req.body;
+            const book = new Book({ title, author });
+            await book.save();
+            res.status(201).json({ message: 'Book added successfully', book });
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to add book', details: err.message });
+        }
     }
-    const newBook = new Book({ title, author });
-    await newBook.save();
-    res.status(201).json({ message: 'Book added successfully.', book: newBook });
-  } catch (error) {
-    console.error('Error adding book:', error);
-    res.status(500).json({ message: 'Internal server error.', error: error.message });
-  }
-});
+);
 
-/**
- * @route PATCH /books/borrow/:id
- * @description Borrow a book from the library
- * @access Public
- */
-app.patch('/books/borrow/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const book = await Book.findById(id);
-
-    if (!book) {
-      return res.status(404).json({ message: 'Book not found.' });
+// Borrow a book
+app.patch('/books/borrow/:id', 
+    validateInputs([
+        param('id').isMongoId().withMessage('Invalid book ID')
+    ]),
+    async (req, res) => {
+        try {
+            const book = await Book.findById(req.params.id);
+            if (!book) {
+                return res.status(404).json({ error: 'Book not found' });
+            }
+            if (book.isBorrowed) {
+                return res.status(400).json({ error: 'Book is already borrowed' });
+            }
+            book.isBorrowed = true;
+            await book.save();
+            res.json({ message: 'Book borrowed successfully', book });
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to borrow book', details: err.message });
+        }
     }
-    if (book.isBorrowed) {
-      return res.status(400).json({ message: 'Book is already borrowed.' });
+);
+
+// Return a book
+app.patch('/books/return/:id', 
+    validateInputs([
+        param('id').isMongoId().withMessage('Invalid book ID')
+    ]),
+    async (req, res) => {
+        try {
+            const book = await Book.findById(req.params.id);
+            if (!book) {
+                return res.status(404).json({ error: 'Book not found' });
+            }
+            if (!book.isBorrowed) {
+                return res.status(400).json({ error: 'Book was not borrowed' });
+            }
+            book.isBorrowed = false;
+            await book.save();
+            res.json({ message: 'Book returned successfully', book });
+        } catch (err) {
+            res.status(500).json({ error: 'Failed to return book', details: err.message });
+        }
     }
+);
 
-    book.isBorrowed = true;
-    await book.save();
-    res.status(200).json({ message: 'Book borrowed successfully.', book });
-  } catch (error) {
-    console.error('Error borrowing book:', error);
-    res.status(500).json({ message: 'Internal server error.', error: error.message });
-  }
-});
-
-/**
- * @route PATCH /books/return/:id
- * @description Return a borrowed book to the library
- * @access Public
- */
-app.patch('/books/return/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const book = await Book.findById(id);
-
-    if (!book) {
-      return res.status(404).json({ message: 'Book not found.' });
-    }
-    if (!book.isBorrowed) {
-      return res.status(400).json({ message: 'Book is not currently borrowed.' });
-    }
-
-    book.isBorrowed = false;
-    await book.save();
-    res.status(200).json({ message: 'Book returned successfully.', book });
-  } catch (error) {
-    console.error('Error returning book:', error);
-    res.status(500).json({ message: 'Internal server error.', error: error.message });
-  }
-});
-
-/**
- * @route GET /books
- * @description View all available books in the library
- * @access Public
- */
+// View all available books
 app.get('/books', async (req, res) => {
-  try {
-    const books = await Book.find({ isBorrowed: false }).sort({ createdAt: -1 });
-    res.status(200).json({ message: 'Available books retrieved successfully.', books });
-  } catch (error) {
-    console.error('Error retrieving books:', error);
-    res.status(500).json({ message: 'Internal server error.', error: error.message });
-  }
-});
-
-/**
- * @route GET /books/all
- * @description View all books in the library (both borrowed and available)
- * @access Public
- */
-app.get('/books/all', async (req, res) => {
-  try {
-    const books = await Book.find().sort({ createdAt: -1 });
-    res.status(200).json({ message: 'All books retrieved successfully.', books });
-  } catch (error) {
-    console.error('Error retrieving all books:', error);
-    res.status(500).json({ message: 'Internal server error.', error: error.message });
-  }
-});
-
-// Error Handling Middleware
-app.use((req, res, next) => {
-  res.status(404).json({ message: 'Endpoint not found.' });
-});
-
-app.use((err, req, res, next) => {
-  console.error('Global error handler:', err.stack);
-  res.status(err.status || 500).json({
-    message: 'An unexpected error occurred.',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error.'
-  });
+    try {
+        const books = await Book.find({ isBorrowed: false });
+        res.json(books);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to retrieve books', details: err.message });
+    }
 });
 
 // Start the server
-
-module.exports = app;
+const PORT = 3000;
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
